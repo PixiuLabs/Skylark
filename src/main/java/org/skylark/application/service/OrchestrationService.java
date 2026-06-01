@@ -80,9 +80,14 @@ public class OrchestrationService {
             // Append audio data to buffer
             buffer.write(audioData);
             
-            // Check for voice activity using VAD
-            boolean isSpeaking = detectVoiceActivity(sessionId, audioData);
+            // Get previous speaking state BEFORE calling VAD
             Boolean wasSpeaking = sessionSpeaking.getOrDefault(sessionId, false);
+            
+            // Check for voice activity using VAD (this updates the state internally)
+            detectVoiceActivity(sessionId, audioData);
+            
+            // Get the new speaking state after VAD
+            Boolean isSpeaking = sessionSpeaking.getOrDefault(sessionId, false);
             
             // If speech just ended, process the buffered audio
             if (wasSpeaking && !isSpeaking && buffer.size() > 0) {
@@ -95,9 +100,6 @@ public class OrchestrationService {
                 // Reset buffer
                 buffer.reset();
             }
-            
-            // Update speaking state
-            sessionSpeaking.put(sessionId, isSpeaking);
             
         } catch (Exception e) {
             logger.error("Error processing audio stream for session: {}", sessionId, e);
@@ -161,7 +163,17 @@ public class OrchestrationService {
             
             // Run VAD detection
             Map<String, Object> result = vadService.detect(audioBase64, sessionId);
-            return (Boolean) result.getOrDefault("isSpeaking", false);
+            String status = (String) result.get("status");
+            
+            // Update state based on VAD status
+            if ("start".equals(status)) {
+                sessionSpeaking.put(sessionId, true);
+            } else if ("end".equals(status)) {
+                sessionSpeaking.put(sessionId, false);
+            }
+            
+            // Return the updated state
+            return sessionSpeaking.getOrDefault(sessionId, false);
         } catch (Exception e) {
             logger.error("Error detecting voice activity", e);
             return false;
