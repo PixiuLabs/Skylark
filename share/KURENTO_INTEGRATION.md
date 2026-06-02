@@ -2,9 +2,13 @@
 
 ## 概述 (Overview)
 
-本项目集成了 Kurento Media Server，实现基于 WebRTC 的 1v1 实时语音通话功能。音频流通过 VAD-ASR-LLM-TTS 管道处理，实现智能语音交互。
+本项目集成了 Kurento Media Server，实现基于 WebRTC 的 1v1 实时语音通话功能。当前实现采用混合模式：
+1. **WebSocket**: 用于传输音频数据和对话消息，集成完整的 VAD-ASR-LLM-TTS 处理管道
+2. **Kurento**: 用于建立 WebRTC 连接，提供实时音视频通信能力
 
-This project integrates Kurento Media Server to provide WebRTC-based 1v1 real-time voice communication. Audio streams are processed through the VAD-ASR-LLM-TTS pipeline for intelligent voice interaction.
+This project integrates Kurento Media Server to provide WebRTC-based 1v1 real-time voice communication. The current implementation uses a hybrid approach:
+1. **WebSocket**: For audio data transmission and dialogue messages, integrating the complete VAD-ASR-LLM-TTS pipeline
+2. **Kurento**: For establishing WebRTC connections and providing real-time audio/video communication capabilities
 
 ## 架构 (Architecture)
 
@@ -55,15 +59,10 @@ This project integrates Kurento Media Server to provide WebRTC-based 1v1 real-ti
 
 ```bash
 # 拉取 Kurento Media Server 镜像
-docker pull kurento/kurento-media-server:latest
+docker pull docker.1ms.run/kurento/kurento-media-server:6.18.0
 
 # 运行 Kurento Media Server
-docker run -d --name kms \
-  -p 8888:8888 \
-  -e KMS_MIN_PORT=40000 \
-  -e KMS_MAX_PORT=57000 \
-  -p 40000-57000:40000-57000/udp \
-  kurento/kurento-media-server:latest
+docker run -d --name kms618 -p 8888:8888 -e KMS_MIN_PORT=45000 -e KMS_MAX_PORT=46000 -p 45000-46000:45000-46000/udp docker.1ms.run/kurento/kurento-media-server:6.18.0
 
 # 查看日志
 docker logs -f kms
@@ -182,6 +181,29 @@ webrtc:
 
 **Response:** `200 OK`
 
+## 当前实现状态 (Current Implementation Status)
+
+### 已实现功能
+- ✅ Kurento WebRTC 连接建立和管理
+- ✅ WebSocket 连接和消息处理
+- ✅ 音频数据采集和 WebSocket 发送
+- ✅ ASR、LLM、TTS 响应显示和播放
+- ✅ 完整的对话 UI 界面
+
+### 技术架构
+```
+Browser
+├── kurento-webrtc.js  (Kurento WebRTC 连接)
+└── WebSocket          (音频/消息传输)
+    ↓
+Backend
+├── WebRTCSignalingHandler  (处理 WebSocket 消息)
+├── OrchestrationService    (VAD-ASR-LLM-TTS 管道)
+└── RobotController         (处理 Kurento 会话)
+    ↓
+Kurento Media Server
+```
+
 ## 使用方法 (Usage)
 
 ### 1. 启动后端服务
@@ -191,19 +213,28 @@ cd /path/to/Skylark
 mvn spring-boot:run
 ```
 
-### 2. 访问演示页面
+### 2. 启动 Kurento Media Server
+
+```bash
+# Docker 方式
+docker run -d --name kms618 -p 8888:8888 -e KMS_MIN_PORT=45000 -e KMS_MAX_PORT=46000 -p 45000-46000:45000-46000/udp docker.1ms.run/kurento/kurento-media-server:6.18.0
+```
+
+### 3. 访问演示页面
 
 打开浏览器访问：
 ```
 http://localhost:8080/kurento-demo.html
 ```
 
-### 3. 开始通话
+### 4. 开始对话
 
-1. 点击"开始通话"按钮
-2. 允许浏览器访问麦克风
-3. 等待 WebRTC 连接建立
-4. 开始语音交互
+1. 等待 WebSocket 自动连接
+2. 点击"开始对话"按钮
+3. 允许浏览器访问麦克风
+4. 开始语音交互（音频通过 WebSocket 发送处理）
+5. 查看识别文本、LLM 回复，收听 TTS 语音
+6. 点击"结束对话"停止
 
 ## 前端集成 (Frontend Integration)
 
