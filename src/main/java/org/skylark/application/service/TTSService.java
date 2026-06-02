@@ -4,22 +4,19 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.buffer.DataBuffer;
-import org.springframework.core.io.buffer.DataBufferUtils;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.util.UriComponentsBuilder;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
 import jakarta.annotation.PreDestroy;
-import java.io.File;
-import java.io.FileOutputStream;
+import java.io.*;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.*;
 
@@ -47,7 +44,7 @@ public class TTSService {
     @Value("${tts.url:http://localhost:59125}")
     private String maryTtsUrl;
 
-    private WebClient webClient;
+    private HttpClient httpClient;
     private boolean maryTTSAvailable = false;
 
     /**
@@ -56,8 +53,8 @@ public class TTSService {
     @PostConstruct
     public void init() {
         try {
-            webClient = WebClient.builder()
-                    .baseUrl(maryTtsUrl)
+            httpClient = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(5))
                     .build();
 
             // Test connection to MaryTTS
@@ -77,12 +74,13 @@ public class TTSService {
      * Test connection to MaryTTS service.
      */
     private void testConnection() throws Exception {
-        webClient.get()
-                .uri("/")
-                .retrieve()
-                .bodyToMono(String.class)
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(maryTtsUrl + "/"))
+                .GET()
                 .timeout(Duration.ofSeconds(5))
-                .block();
+                .build();
+        
+        httpClient.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
     /**
@@ -148,34 +146,32 @@ public class TTSService {
         try {
             logger.debug("开始MaryTTS HTTP合成: {} 字符", text.length());
 
-            // Build MaryTTS HTTP request
-            String requestUrl = UriComponentsBuilder.fromHttpUrl(maryTtsUrl)
-                    .path("/process")
-                    .queryParam("INPUT_TEXT", text)
-                    .queryParam("INPUT_TYPE", "TEXT")
-                    .queryParam("OUTPUT_TYPE", "AUDIO")
-                    .queryParam("LOCALE", "en_US")
-                    .queryParam("VOICE", voice)
-                    .queryParam("AUDIO", "WAVE")
-                    .toUriString();
+            // Build MaryTTS HTTP request with proper encoding
+            String encodedText = URLEncoder.encode(text, StandardCharsets.UTF_8.toString());
+            String requestUrl = String.format(
+                    "%s/process?INPUT_TYPE=TEXT&OUTPUT_TYPE=AUDIO&INPUT_TEXT=%s&LOCALE=en_US&VOICE=%s&AUDIO=WAVE_FILE",
+                    maryTtsUrl, encodedText, voice
+            );
 
             logger.debug("MaryTTS请求URL: {}", requestUrl);
 
-            Flux<DataBuffer> audioFlux = webClient.get()
-                    .uri(requestUrl)
-                    .accept(MediaType.APPLICATION_OCTET_STREAM)
-                    .retrieve()
-                    .bodyToFlux(DataBuffer.class)
-                    .timeout(Duration.ofSeconds(30));
+            // Create HTTP request
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(requestUrl))
+                    .GET()
+                    .timeout(Duration.ofSeconds(30))
+                    .build();
 
+            // Send request and get response
+            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+
+            if (response.statusCode() != 200) {
+                throw new Exception("MaryTTS返回错误状态码: " + response.statusCode());
+            }
+
+            // Write response to file
             Path filePath = Paths.get(outputFile.getAbsolutePath());
-            Mono<Void> writeMono = DataBufferUtils.write(
-                    audioFlux,
-                    filePath,
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.WRITE
-            );
-            writeMono.block();
+            Files.write(filePath, response.body());
 
             if (!Files.exists(filePath) || Files.size(filePath) == 0) {
                 throw new Exception("MaryTTS返回空音频文件");
