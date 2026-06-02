@@ -1,6 +1,11 @@
 # Skylark Voice Agent Configuration
 # 云雀智能语音助手配置
 
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.groovy.template.GroovyTemplateAutoConfiguration
+
 server:
   port: 8080
 
@@ -14,6 +19,7 @@ asr:
 # TTS Configuration
 tts:
   voice: cmu-slt-hsmm
+  url: http://localhost:59125
   temp:
     dir: temp/tts
 
@@ -37,13 +43,13 @@ kurento:
 # WebRTC Configuration
 webrtc:
   # Active strategy: websocket, kurento, livekit, or agora
-  strategy: websocket
+  strategy: kurento
   kurento:
     ws-uri: ws://localhost:8888/kurento
   livekit:
-    url: ""
-    api-key: ""
-    api-secret: ""
+    url: "http://localhost:7880"
+    api-key: "devkey"
+    api-secret: "secret"
   # Agora (声网) Configuration
   agora:
     app-id: ""
@@ -69,6 +75,13 @@ webrtc:
     username: ""
     password: ""
     transport: udp
+
+# LLM (Large Language Model) Configuration
+llm:
+  # API Key（从环境变量 DEEPSEEK_API_KEY 读取，未设置时使用空字符串）
+  api-key: ${DEEPSEEK_API_KEY:}
+  model-name: meta/llama-3.3-70b-instruct
+  base-url: https://integrate.api.nvidia.com/v1
 
 # Logging Configuration
 logging:

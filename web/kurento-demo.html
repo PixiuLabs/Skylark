@@ -375,6 +375,7 @@
                 this.processor = null;
                 this.isConnected = false;
                 this.isCallActive = false;
+                this.lastSentText = null;
                 
                 this.elements = {
                     messages: document.getElementById('messages'),
@@ -589,6 +590,7 @@
                 if (!text || !this.isConnected) return;
 
                 this.addMessage(text, 'user');
+                this.lastSentText = text;
                 this.elements.textInput.value = '';
 
                 this.sendSignalingMessage('text', { content: text });
@@ -616,7 +618,11 @@
                         
                         case 'asr_result':
                             if (message.data && message.data.text) {
-                                this.addMessage(message.data.text, 'user');
+                                if (message.data.text !== this.lastSentText) {
+                                    this.addMessage(message.data.text, 'user');
+                                } else {
+                                    this.lastSentText = null;
+                                }
                             }
                             break;
                         
