@@ -88,13 +88,83 @@ public class WebRTCSession {
         }
         
         try {
-            String sdpAnswer = webRtcEndpoint.processOffer(sdpOffer);
-            logger.debug("Processed SDP offer for session: {}", sessionId);
+            logger.info("[Kurento] Processing SDP offer for session: {}", sessionId);
+            logger.debug("[Kurento] SDP offer length: {}", sdpOffer.length());
+            logger.debug("[Kurento] SDP offer:\n{}", sdpOffer);
+
+            String strippedOffer = minimizeSdpOffer(sdpOffer);
+            logger.info("[Kurento] Stripped SDP offer length: {}", strippedOffer.length());
+            logger.debug("[Kurento] Stripped SDP offer:\n{}", strippedOffer);
+
+            String sdpAnswer = webRtcEndpoint.processOffer(strippedOffer);
+            
+            logger.info("[Kurento] SDP answer generated for session: {}", sessionId);
+            logger.debug("[Kurento] SDP answer length: {}", sdpAnswer.length());
+            logger.debug("[Kurento] SDP answer:\n{}", sdpAnswer);
+            
             return sdpAnswer;
         } catch (Exception e) {
             logger.error("Error processing SDP offer for session: {}", sessionId, e);
             throw new RuntimeException("Failed to process SDP offer", e);
         }
+    }
+
+    private String minimizeSdpOffer(String sdp) {
+        StringBuilder sb = new StringBuilder();
+        boolean inAudio = false;
+
+        for (String line : sdp.split("\\r?\\n")) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty()) continue;
+
+            if (trimmed.startsWith("v=") || trimmed.startsWith("o=")
+                || trimmed.startsWith("s=") || trimmed.startsWith("t=")) {
+                sb.append(trimmed).append("\r\n");
+                continue;
+            }
+
+            if (trimmed.startsWith("m=audio")) {
+                inAudio = true;
+                String[] parts = trimmed.split(" ");
+                StringBuilder mline = new StringBuilder();
+                for (int i = 0; i < parts.length; i++) {
+                    if (i < 3) {
+                        mline.append(parts[i]).append(" ");
+                    } else if ("111".equals(parts[i]) || "0".equals(parts[i])) {
+                        mline.append(parts[i]).append(" ");
+                    }
+                }
+                sb.append(mline.toString().trim()).append("\r\n");
+                continue;
+            }
+
+            if (trimmed.startsWith("m=")) {
+                inAudio = false;
+                continue;
+            }
+
+            if (!inAudio) continue;
+
+            if (trimmed.startsWith("c=")) {
+                sb.append("c=IN IP4 0.0.0.0\r\n");
+                continue;
+            }
+
+            if (trimmed.startsWith("a=ice-ufrag:")
+                || trimmed.startsWith("a=ice-pwd:")
+                || trimmed.startsWith("a=fingerprint:")
+                || trimmed.startsWith("a=setup:")
+                || trimmed.startsWith("a=mid:")
+                || trimmed.startsWith("a=rtcp-mux")
+                || trimmed.startsWith("a=sendrecv")
+                || trimmed.startsWith("a=rtpmap:111")
+                || trimmed.startsWith("a=rtpmap:0")
+                || trimmed.startsWith("a=fmtp:111")
+                || trimmed.startsWith("a=rtcp-fb:111")) {
+                sb.append(trimmed).append("\r\n");
+            }
+        }
+        return sb.toString();
     }
     
     /**
