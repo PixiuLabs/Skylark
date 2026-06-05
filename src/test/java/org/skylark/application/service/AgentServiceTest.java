@@ -4,6 +4,7 @@ import io.agentscope.core.message.Msg;
 import io.agentscope.core.tool.Toolkit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.skylark.infrastructure.config.LlmProperties;
 
 import java.util.List;
 
@@ -18,34 +19,20 @@ class AgentServiceTest {
 
     @BeforeEach
     void setUp() {
-        // Create AgentService with test configuration
-        agentService = new AgentService(
-            "test-api-key",
-            "test-model",
-            "https://test.api.com",
-            "You are a test assistant.",
-            10
-        );
+        LlmProperties llmProperties = new LlmProperties();
+        llmProperties.setApiKey("test-api-key");
+        llmProperties.setModelName("test-model");
+        llmProperties.setBaseUrl("https://test.api.com");
+        
+        agentService = new AgentService(llmProperties);
     }
 
     @Test
     void testInitialization() {
         assertNotNull(agentService);
-        assertEquals("You are a test assistant.", agentService.getSystemPrompt());
+        assertNotNull(agentService.getSystemPrompt());
+        assertFalse(agentService.getSystemPrompt().isEmpty());
         assertNotNull(agentService.getToolkit());
-    }
-
-    @Test
-    void testDefaultSystemPrompt() {
-        AgentService defaultAgent = new AgentService("default-prompt", 5);
-        assertEquals("default-prompt", defaultAgent.getSystemPrompt());
-    }
-
-    @Test
-    void testNullSystemPromptUsesDefault() {
-        AgentService agent = new AgentService(null, 10);
-        assertNotNull(agent.getSystemPrompt());
-        assertFalse(agent.getSystemPrompt().isEmpty());
     }
 
     @Test
@@ -56,15 +43,12 @@ class AgentServiceTest {
 
     @Test
     void testRegisterToolObject() {
-        // Register a tool object with @Tool annotated methods
         agentService.registerToolObject(new TestTools());
-        // No exception means registration was successful
         assertNotNull(agentService.getToolkit());
     }
 
     @Test
     void testClearSession() {
-        // Should not throw for non-existent session
         assertDoesNotThrow(() -> agentService.clearSession("non-existent"));
     }
 
@@ -82,16 +66,12 @@ class AgentServiceTest {
 
     @Test
     void testClearSession_RemovesAgent() {
-        // Trigger agent creation by calling getSessionHistory after chat would create it
-        // Since we can't actually call chat without a real model, test the clear flow
         agentService.clearSession("session-1");
         assertEquals(0, agentService.getActiveSessionCount());
     }
 
     @Test
     void testMultipleSessionsTracking() {
-        // This tests the session tracking without making actual API calls
-        // Real chat() tests would require a running model endpoint
         assertEquals(0, agentService.getActiveSessionCount());
         agentService.clearSession("session-1");
         agentService.clearSession("session-2");

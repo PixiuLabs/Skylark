@@ -85,7 +85,9 @@ if [ "$MODE" = "local" ]; then
     # 若要打开 JNI 加载调试，取消注释下行：
     # export LD_DEBUG=libs
 
-    exec java ${JAVA_NATIVE_OPTS} -jar "$JAR_PATH" "$CONFIG_PATH"
+    # 设置 UTF-8 编码以防止乱码
+    export LANG="zh_CN.UTF-8"
+    exec java ${JAVA_NATIVE_OPTS} -Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8 -jar "$JAR_PATH" "$CONFIG_PATH"
 fi
 
 # ===== Docker Compose 启动模式 =====

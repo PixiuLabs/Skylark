@@ -8,7 +8,9 @@ import io.agentscope.core.model.OpenAIChatModel;
 import io.agentscope.core.tool.Toolkit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.skylark.infrastructure.config.LlmProperties;
 
 import java.util.List;
 import java.util.Map;
@@ -59,58 +61,27 @@ public class AgentService {
     private final Map<String, ReActAgent> sessionAgents = new ConcurrentHashMap<>();
 
     /**
-     * Constructs an AgentService with the given LLM adapter.
-     * Creates an AgentScope OpenAIChatModel using environment configuration.
+     * Constructs an AgentService with LLM configuration properties.
+     * Creates an AgentScope OpenAIChatModel using application.yml configuration and environment variable for API key.
      *
-     * @param llmAdapter LLM adapter for backward compatibility
+     * @param llmProperties LLM configuration properties
      */
-    public AgentService(org.skylark.infrastructure.adapter.LLM llmAdapter) {
-        this(DEFAULT_SYSTEM_PROMPT, DEFAULT_MAX_ITERS);
-    }
-
-    /**
-     * Constructs an AgentService with custom system prompt and default model configuration.
-     *
-     * @param systemPrompt System prompt defining agent persona
-     * @param maxIters Maximum ReAct iterations per request
-     */
-    public AgentService(String systemPrompt, int maxIters) {
-        this.systemPrompt = systemPrompt != null ? systemPrompt : DEFAULT_SYSTEM_PROMPT;
-        this.maxIters = maxIters > 0 ? maxIters : DEFAULT_MAX_ITERS;
+    @Autowired
+    public AgentService(LlmProperties llmProperties) {
+        this.systemPrompt = DEFAULT_SYSTEM_PROMPT;
+        this.maxIters = DEFAULT_MAX_ITERS;
         this.sharedToolkit = new Toolkit();
 
-        // Create OpenAIChatModel for DeepSeek (OpenAI-compatible API)
-        String apiKey = System.getenv("DEEPSEEK_API_KEY");
+        // Create OpenAIChatModel using configuration properties
+        String apiKey = llmProperties.getApiKey();
         if (apiKey == null || apiKey.isEmpty()) {
             apiKey = "sk-placeholder";
             logger.warn("DEEPSEEK_API_KEY environment variable not set, using placeholder. "
                 + "Set DEEPSEEK_API_KEY before starting the application for production use.");
         }
 
-        this.chatModel = OpenAIChatModel.builder()
-            .apiKey(apiKey)
-            .modelName("deepseek-chat")
-            .baseUrl("https://api.deepseek.com")
-            .build();
-
-        logger.info("AgentService initialized with AgentScope ReActAgent, model=deepseek-chat, maxIters={}",
-            this.maxIters);
-    }
-
-    /**
-     * Constructs an AgentService with explicit model configuration.
-     *
-     * @param apiKey API key for the model provider
-     * @param modelName Model name (e.g., "deepseek-chat", "gpt-4o")
-     * @param baseUrl API base URL (e.g., "https://api.deepseek.com")
-     * @param systemPrompt System prompt defining agent persona
-     * @param maxIters Maximum ReAct iterations per request
-     */
-    public AgentService(String apiKey, String modelName, String baseUrl,
-                        String systemPrompt, int maxIters) {
-        this.systemPrompt = systemPrompt != null ? systemPrompt : DEFAULT_SYSTEM_PROMPT;
-        this.maxIters = maxIters > 0 ? maxIters : DEFAULT_MAX_ITERS;
-        this.sharedToolkit = new Toolkit();
+        String modelName = llmProperties.getModelName();
+        String baseUrl = llmProperties.getBaseUrl();
 
         this.chatModel = OpenAIChatModel.builder()
             .apiKey(apiKey)
