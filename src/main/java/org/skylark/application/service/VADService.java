@@ -16,6 +16,7 @@ import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
+import java.nio.LongBuffer;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
@@ -171,16 +172,49 @@ public class VADService {
         try {
             float[] audioSamples = convertBytesToFloatArray(audioBytes);
             
-            long[] shape = {1, audioSamples.length};
-            OnnxTensor inputTensor = OnnxTensor.createTensor(env, 
-                FloatBuffer.wrap(audioSamples), shape);
+            // Prepare input tensors for Silero VAD
+            // Silero VAD requires: input (audio), sr (sample rate), h, c (hidden states)
+            Map<String, OnnxTensor> inputs = new HashMap<>();
             
-            try (OrtSession.Result result = session.run(Collections.singletonMap("input", inputTensor))) {
+            // 1. Audio input
+            long[] audioShape = {1, audioSamples.length};
+            OnnxTensor inputTensor = OnnxTensor.createTensor(env, 
+                FloatBuffer.wrap(audioSamples), audioShape);
+            inputs.put("input", inputTensor);
+            
+            // 2. Sample rate (sr)
+            long[] srShape = {1};
+            OnnxTensor srTensor = OnnxTensor.createTensor(env, 
+                LongBuffer.wrap(new long[]{samplingRate}), srShape);
+            inputs.put("sr", srTensor);
+            
+            // 3. Hidden state h (initial zeros)
+            long[] hShape = {2, 1, 64};
+            float[] hData = new float[2 * 1 * 64];
+            OnnxTensor hTensor = OnnxTensor.createTensor(env, 
+                FloatBuffer.wrap(hData), hShape);
+            inputs.put("h", hTensor);
+            
+            // 4. Hidden state c (initial zeros)
+            long[] cShape = {2, 1, 64};
+            float[] cData = new float[2 * 1 * 64];
+            OnnxTensor cTensor = OnnxTensor.createTensor(env, 
+                FloatBuffer.wrap(cData), cShape);
+            inputs.put("c", cTensor);
+            
+            try (OrtSession.Result result = session.run(inputs)) {
                 float speechProb = extractSpeechProbability(result);
                 logger.debug("Speech probability: {}, threshold: {}", speechProb, threshold);
                 return determineVADStatus(speechProb, state);
             } finally {
-                inputTensor.close();
+                // Close all tensors
+                for (OnnxTensor tensor : inputs.values()) {
+                    try {
+                        tensor.close();
+                    } catch (Exception e) {
+                        // Ignore
+                    }
+                }
             }
             
         } catch (Exception e) {

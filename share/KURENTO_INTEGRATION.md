@@ -2,9 +2,17 @@
 
 ## 概述 (Overview)
 
-本项目集成了 Kurento Media Server，实现基于 WebRTC 的 1v1 实时语音通话功能。音频流通过 VAD-ASR-LLM-TTS 管道处理，实现智能语音交互。
+本项目集成了 Kurento Media Server，实现基于 WebRTC 的 1v1 实时语音通话功能。当前实现采用混合模式：
+1. **WebSocket**: 用于传输音频数据和对话消息，集成完整的 VAD-ASR-LLM-TTS 处理管道
+2. **Kurento**: 用于建立 WebRTC 连接，提供实时音视频通信能力
 
-This project integrates Kurento Media Server to provide WebRTC-based 1v1 real-time voice communication. Audio streams are processed through the VAD-ASR-LLM-TTS pipeline for intelligent voice interaction.
+本版本使用**原生 WebRTC API**实现，不再依赖 kurento-utils.js 库，提供更轻量、更可控的实现。
+
+This project integrates Kurento Media Server to provide WebRTC-based 1v1 real-time voice communication. The current implementation uses a hybrid approach:
+1. **WebSocket**: For audio data transmission and dialogue messages, integrating the complete VAD-ASR-LLM-TTS pipeline
+2. **Kurento**: For establishing WebRTC connections and providing real-time audio/video communication capabilities
+
+This version uses **native WebRTC API** and no longer depends on kurento-utils.js library, providing a lighter and more controllable implementation.
 
 ## 架构 (Architecture)
 
@@ -55,15 +63,10 @@ This project integrates Kurento Media Server to provide WebRTC-based 1v1 real-ti
 
 ```bash
 # 拉取 Kurento Media Server 镜像
-docker pull kurento/kurento-media-server:latest
+docker pull docker.1ms.run/kurento/kurento-media-server:6.18.0
 
 # 运行 Kurento Media Server
-docker run -d --name kms \
-  -p 8888:8888 \
-  -e KMS_MIN_PORT=40000 \
-  -e KMS_MAX_PORT=57000 \
-  -p 40000-57000:40000-57000/udp \
-  kurento/kurento-media-server:latest
+docker run -d --name kms618 -p 8888:8888 -e KMS_MIN_PORT=45000 -e KMS_MAX_PORT=46000 -p 45000-46000:45000-46000/udp docker.1ms.run/kurento/kurento-media-server:6.18.0
 
 # 查看日志
 docker logs -f kms
@@ -182,6 +185,29 @@ webrtc:
 
 **Response:** `200 OK`
 
+## 当前实现状态 (Current Implementation Status)
+
+### 已实现功能
+- ✅ Kurento WebRTC 连接建立和管理
+- ✅ WebSocket 连接和消息处理
+- ✅ 音频数据采集和 WebSocket 发送
+- ✅ ASR、LLM、TTS 响应显示和播放
+- ✅ 完整的对话 UI 界面
+
+### 技术架构
+```
+Browser
+├── kurento-webrtc.js  (Kurento WebRTC 连接)
+└── WebSocket          (音频/消息传输)
+    ↓
+Backend
+├── WebRTCSignalingHandler  (处理 WebSocket 消息)
+├── OrchestrationService    (VAD-ASR-LLM-TTS 管道)
+└── RobotController         (处理 Kurento 会话)
+    ↓
+Kurento Media Server
+```
+
 ## 使用方法 (Usage)
 
 ### 1. 启动后端服务
@@ -191,19 +217,46 @@ cd /path/to/Skylark
 mvn spring-boot:run
 ```
 
-### 2. 访问演示页面
+### 2. 启动 Kurento Media Server
+
+```bash
+# Docker 方式
+docker run -d --name kms618 -p 8888:8888 -e KMS_MIN_PORT=45000 -e KMS_MAX_PORT=46000 -p 45000-46000:45000-46000/udp docker.1ms.run/kurento/kurento-media-server:6.18.0
+```
+
+### 3. 访问演示页面
 
 打开浏览器访问：
 ```
 http://localhost:8080/kurento-demo.html
 ```
 
-### 3. 开始通话
+### 4. 开始对话
 
-1. 点击"开始通话"按钮
-2. 允许浏览器访问麦克风
-3. 等待 WebRTC 连接建立
-4. 开始语音交互
+1. 等待 WebSocket 自动连接（页面会显示连接状态）
+2. 点击"📞 开始对话"按钮
+3. 允许浏览器访问麦克风
+4. 开始语音交互（音频同时通过 WebSocket 发送处理和通过 Kurento WebRTC 传输）
+5. 查看识别文本、LLM 回复，收听 TTS 语音
+6. 点击"⏸️ 结束对话"停止
+
+### 文件结构
+
+```
+web/
+├── kurento-demo.html     # 演示页面，包含完整的 UI 和交互逻辑
+└── js/
+    └── kurento-webrtc.js # Kurento WebRTC 客户端库（原生实现）
+```
+
+### 音频处理流程
+
+1. **本地音频采集**: 浏览器通过 `getUserMedia` 采集麦克风音频
+2. **双通道处理**:
+   - **WebRTC 通道**: 通过 Kurento WebRTC 连接传输到媒体服务器
+   - **WebSocket 通道**: 通过 `ScriptProcessorNode` 采集音频数据，转换为 PCM 格式发送到后端
+3. **VAD-ASR-LLM-TTS 处理**: 后端处理音频并返回结果
+4. **TTS 播放**: 页面接收 TTS 音频并通过 Audio 对象播放
 
 ## 前端集成 (Frontend Integration)
 
@@ -213,21 +266,82 @@ http://localhost:8080/kurento-demo.html
 // 创建客户端实例
 const client = new KurentoWebRTCClient();
 
-// 设置回调
+// 设置状态回调
 client.setStatusCallback((state, text) => {
     console.log(`Status: ${state} - ${text}`);
 });
 
+// 设置消息回调
 client.setMessageCallback((type, data) => {
     console.log(`Message: ${type}`, data);
+});
+
+// 设置连接状态回调（可选）
+client.setConnectionStateCallback((state) => {
+    console.log(`ICE Connection State: ${state}`);
 });
 
 // 启动会话
 await client.start();
 
+// 检查会话是否活动
+if (client.isActive()) {
+    console.log('Session is active');
+}
+
 // 停止会话
 await client.stop();
 ```
+
+### KurentoWebRTCClient API
+
+#### 构造函数
+```javascript
+new KurentoWebRTCClient()
+```
+创建新的 Kurento WebRTC 客户端实例。
+
+#### 方法
+
+##### `setStatusCallback(callback)`
+设置状态更新回调
+- **参数**: `callback(state, text)` - 回调函数，接收状态和文本信息
+
+##### `setMessageCallback(callback)`
+设置消息接收回调
+- **参数**: `callback(type, data)` - 回调函数，接收消息类型和数据
+
+##### `setConnectionStateCallback(callback)`
+设置 ICE 连接状态变更回调（可选）
+- **参数**: `callback(state)` - 回调函数，接收连接状态
+
+##### `async start()`
+启动 WebRTC 会话
+- **返回**: Promise，在会话建立完成后 resolve
+- **抛出**: 如果建立失败则抛出异常
+
+##### `async stop()`
+停止 WebRTC 会话
+- **返回**: Promise，在会话关闭后 resolve
+
+##### `isActive()`
+检查会话是否活动
+- **返回**: boolean - 会话是否处于活动状态
+
+##### `cleanup()`
+清理所有 WebRTC 资源（内部使用）
+
+## SDP 处理兼容性说明
+
+本实现包含一系列 SDP 处理逻辑，确保与 Kurento 6.x 兼容：
+
+1. **音频-only SDP 提取**: 自动移除视频媒体行，只保留音频
+2. **BUNDLE 移除**: 移除 `a=group:BUNDLE` 属性，Kurento 6.x 可能拒绝此类 SDP
+3. **编解码器简化**: 只保留 Opus (111) 和 PCMU (0) 编解码器，减少兼容性问题
+4. **MID 对齐**: 调整 answer SDP 的 mid 属性以匹配 offer
+5. **SDP 标准化**: 处理换行符和尾随空行
+
+这些处理逻辑是为了解决 Kurento 6.x 与现代浏览器 WebRTC 实现之间的兼容性问题。
 
 ## 故障排除 (Troubleshooting)
 
